@@ -1,0 +1,2 @@
+-- 示例：PostgreSQL 专用回填（方言文件优先于同名通用 SQL）
+UPDATE assets SET monitor_note = NULL WHERE monitor_note = '';

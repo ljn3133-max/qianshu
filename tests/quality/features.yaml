@@ -1,0 +1,103 @@
+# 功能回归清单（声明式：17 功能域，内容级断言——"200 不算过，数据对才算过"）
+# 每项：name / api（接口）/ expect（内容断言：json 路径包含值或存在）
+domains:
+  - name: 认证安全
+    cases:
+      - { name: 登录, api: "POST /auth/login|{\"username\":\"{USERNAME}\",\"password\":\"{PASSWORD}\"}", expect: "token 存在" }
+      - { name: 当前用户, api: "GET /auth/me", expect: "username 存在" }
+  - name: 安装向导
+    cases:
+      - { name: 五面体检报告, api: "GET /bootstrap/report", expect: "faces 长度=5" }
+      - { name: Agent 命令, api: "GET /bootstrap/agent-command", expect: "command 含 qianshu-agent" }
+      - { name: 数据源探测, api: "GET /bootstrap/monitor-sources", expect: "summary 存在" }
+  - name: 监控告警
+    cases:
+      - { name: 告警记录列表, api: "GET /alerts/records", expect: "total 存在" }
+      - { name: 告警规则, api: "GET /alerts/rules", expect: "列表" }
+  - name: 变更事件
+    cases:
+      - { name: 变更时间线, api: "GET /changes?hours=24", expect: "items 存在" }
+  - name: 画像
+    cases:
+      - { name: 画像列表, api: "GET /profiles", expect: "items 存在" }
+  - name: 成本
+    cases:
+      - { name: 昨日拆解, api: "GET /cost/drilldown?days=7", expect: "date 存在" }
+      - { name: 成本异动, api: "GET /cost/anomalies", expect: "items 存在" }
+  - name: 到期
+    cases:
+      - { name: 到期账, api: "GET /expiry/items", expect: "total>0" }
+      # 口径契约：顶部数字与列表必须一致（可见/已忽略分开）
+      - { name: 到期账可见口径, api: "GET /expiry/items", expect: "visible_summary 存在" }
+      - { name: 到期账忽略口径, api: "GET /expiry/items?include_ignored=1", expect: "ignored_summary 存在" }
+  - name: 数据库运维
+    cases:
+      - { name: RDS 实例与洞察支持标记, api: "GET /dba/instances", expect: "instances 存在" }
+  - name: AI 诊断
+    cases:
+      - { name: 工具注册表, api: "GET /tools/mcp", expect: "tools 长度>20" }
+      - { name: Skill 清单, api: "GET /tools/skills", expect: "count>20" }
+  - name: 巡检
+    cases:
+      - { name: 巡检列表, api: "GET /inspections/runs", expect: "items 存在" }
+  - name: 拓扑
+    cases:
+      - { name: 架构图数据, api: "GET /topology/arch", expect: "stats.groups>10" }
+      - { name: 架构图数据源索引, api: "GET /topology/arch", expect: "sources 存在" }
+      - { name: 混云分组消除统计, api: "GET /topology/arch", expect: "stats.mixed_groups_eliminated 存在" }
+      - { name: 架构图按数据源-阿里云, api: "GET /topology/arch?source=aliyun", expect: "source 含 aliyun" }
+      - { name: 架构图按数据源-私有云, api: "GET /topology/arch?source=private", expect: "source 含 private" }
+      - { name: 非法数据源拦截, api: "GET /topology/arch?source=not-a-cloud", expect: "拦截" }
+      - { name: 明细图, api: "GET /topology/graph", expect: "stats.nodes>30" }
+      - { name: 链路完整性, api: "GET /topology/integrity", expect: "issues 存在" }
+      - { name: 扫描历史, api: "GET /topology/scans", expect: "列表" }
+  - name: 拨测
+    cases:
+      - { name: 拨测列表, api: "GET /synth/checks", expect: "列表" }
+  - name: 值班运营
+    cases:
+      - { name: 值班表, api: "GET /oncall/contacts", expect: "列表" }
+      - { name: 价值账单, api: "GET /oncall/value-report", expect: "period 存在" }
+      - { name: 校准周报, api: "GET /oncall/calibration", expect: "week 存在" }
+      - { name: 知识探针, api: "GET /oncall/knowledge-probe", expect: "results 长度=5" }
+  - name: 集成
+    cases:
+      - { name: 集成总览, api: "GET /integrations/overview", expect: "webhook.base_url 存在" }
+      - { name: 接入教程, api: "GET /integrations/guide/gitlab", expect: "steps 长度>2" }
+  - name: 多账号
+    cases:
+      - { name: 账号列表, api: "GET /settings/accounts", expect: "列表" }
+      - { name: 跨云总览, api: "GET /multi-cloud/overview", expect: "totals.assets>0" }
+  - name: 资产底账与智能体
+    cases:
+      - { name: 多云资产底账, api: "GET /assets/cloud-overview", expect: "total>0" }
+      - { name: VMware 资产清单, api: "GET /assets?product=vmware_vm", expect: "items 存在" }
+      - { name: 智能体系统快照, api: "GET /agent/system-snapshot", expect: "assets 存在" }
+      - { name: 智能体今日建议, api: "GET /agent/suggestions", expect: "items 存在" }
+      - { name: 智能体工作流清单, api: "GET /agent/workflows", expect: "items 存在" }
+      - { name: 智能体运行记录, api: "GET /agent/workflows/runs", expect: "total 存在" }
+  - name: 首页与运营面
+    cases:
+      - { name: 首页摘要, api: "GET /dashboard/summary", expect: "stats 存在" }
+      - { name: 首页待办, api: "GET /dashboard/summary", expect: "todos 存在" }
+      - { name: 审计日志, api: "GET /audit/logs", expect: "total>0" }
+      - { name: 消息收件箱, api: "GET /messages/inbox", expect: "unread 存在" }
+      - { name: 主机清单, api: "GET /machines", expect: "total>0" }
+      - { name: 容器集群, api: "GET /k8s/clusters", expect: "列表" }
+      - { name: 用户列表, api: "GET /users", expect: "列表" }
+      - { name: 数据源探测, api: "GET /datasources", expect: "summary 存在" }
+      - { name: 域名清单, api: "GET /domains", expect: "total>0" }
+      - { name: 巡检状态, api: "GET /inspections/status", expect: "latest_run 存在" }
+      - { name: 画像对象, api: "GET /profiles/objects", expect: "items 存在" }
+      - { name: 监控指标配置, api: "GET /monitor/config", expect: "ecs 存在" }
+  - name: 系统设置
+    cases:
+      - { name: 授权状态, api: "GET /settings/license", expect: "mode 存在" }
+      - { name: 版本, api: "GET /settings/version", expect: "version 存在" }
+      - { name: 组件规则, api: "GET /settings/components", expect: "rules 存在" }
+      - { name: 监控提醒策略, api: "GET /policy/overview", expect: "modules 长度>5" }
+      - { name: 策略模块清单, api: "GET /policy/overview", expect: "modules" }
+      - { name: 策略账号清单, api: "GET /policy/overview", expect: "accounts" }
+  - name: MCP 协议
+    cases:
+      - { name: MCP 握手, api: "POST /mcp|{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\"}", expect: "result.serverInfo 存在" }

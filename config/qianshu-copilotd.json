@@ -1,0 +1,20 @@
+{
+  "platform_dir": "/opt/qianshu",
+  "start_cmd": "python3 -m uvicorn app.main:app --host 127.0.0.1 --port 8810 --proxy-headers --forwarded-allow-ips=127.0.0.1",
+  "workdir": "",
+  "api_url": "http://127.0.0.1:8810",
+  "health_path": "/api/bootstrap/status",
+  "log_path": "/tmp/qianshu-backend.log",
+  "token_file": "/opt/qianshu/config/qianshu-copilotd.token",
+  "actions_path": "/opt/qianshu/data/copilotd/actions.jsonl",
+  "listen_host": "127.0.0.1",
+  "listen_port": 18810,
+  "check_interval": 10.0,
+  "auto_heal": true,
+  "debounce_checks": 2,
+  "heal_backoff_base": 30.0,
+  "heal_backoff_max": 300.0,
+  "start_timeout": 90.0,
+  "disk_min_gb": 1.0,
+  "bridge_token": ""
+}

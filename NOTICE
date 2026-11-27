@@ -1,0 +1,12 @@
+千枢 QianShu
+Copyright 2026 QianShu contributors
+
+Licensed under the Apache License, Version 2.0 (see LICENSE).
+
+This product includes software developed by third parties. The full third-party
+inventory and license terms are in THIRD_PARTY_NOTICES.md. Copyright and license
+files shipped inside dependency wheels and npm packages must be retained when
+redistributing the source or offline packages.
+
+The QianShu name, logo (frontend/public/logo.png), and trademarks are used with
+the project owner's authorization and are not licensed under Apache-2.0.

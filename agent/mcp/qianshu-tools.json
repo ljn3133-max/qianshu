@@ -1,0 +1,699 @@
+{
+  "server": "qianshu",
+  "version": "0.1",
+  "principles": [
+    "MCP 导出工具全部只读",
+    "LLM 只产出工具名+参数，代码侧白名单执行",
+    "外部写操作不在 MCP 导出范围，必须另走角色权限、明确确认、审计与回滚"
+  ],
+  "tools": [
+    {
+      "name": "app_errors",
+      "description": "查应用 ERROR 日志：数量 + 最新样本内容（应用名 = 链路库 app_name 或域名）",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "app_name": {
+            "type": "string",
+            "description": "应用名，如 www.example.com"
+          },
+          "window": {
+            "type": "string",
+            "description": "1h/6h/24h，默认 1h"
+          }
+        },
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "scenarios": [
+          "link_fault",
+          "host_res"
+        ]
+      }
+    },
+    {
+      "name": "backend_health",
+      "description": "查域名的后端 ECS：运行状态、CPU/内存/磁盘 24h 峰值、每台的流量/5xx/RT",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "host": {
+            "type": "string",
+            "description": "完整域名"
+          }
+        },
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "scenarios": [
+          "link_fault"
+        ]
+      }
+    },
+    {
+      "name": "bill_breakdown",
+      "description": "账单拆解：目标（实例/产品/场景）近 N 天账单行、逐日趋势、计费场景构成——'这笔钱怎么来的'。可按 account_id 过滤",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "target": {
+            "type": "string",
+            "description": "实例ID/名称/产品名，如 daspost-cn-xxx 或 对象存储"
+          },
+          "days": {
+            "type": "string",
+            "description": "默认 30，最多 90"
+          },
+          "account_id": {
+            "type": "string",
+            "description": "云账号ID过滤（可选，缺省=全部账号聚合）"
+          }
+        },
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "scenarios": [
+          "cost_analysis",
+          "dba"
+        ]
+      }
+    },
+    {
+      "name": "bill_config",
+      "description": "计费相关配置实况：SQL 审计/日志的开通状态、冷热存储时长与收费统计方式——'是不是开着、哪块在收钱'",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "instance": {
+            "type": "string",
+            "description": "RDS 实例ID或名称，如 rds-example"
+          }
+        },
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "scenarios": [
+          "cost_analysis",
+          "dba"
+        ]
+      }
+    },
+    {
+      "name": "biz_errors",
+      "description": "查业务报错：应用 ERROR 与 SLB 5xx 的小时分布——资源异常时段业务是否受损",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "window": {
+            "type": "string",
+            "description": "1h/6h/24h，默认 24h"
+          },
+          "around": {
+            "type": "string",
+            "description": "聚焦时刻（可选）"
+          },
+          "app_name": {
+            "type": "string",
+            "description": "应用名过滤（可选）"
+          },
+          "host": {
+            "type": "string",
+            "description": "域名过滤（可选）"
+          }
+        },
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "scenarios": [
+          "host_res",
+          "link_fault"
+        ]
+      }
+    },
+    {
+      "name": "cdn_domain_traffic",
+      "description": "查 CDN/DCDN 按域名的每日流量——CDN 流量包到底被哪个域名烧掉、各占多少",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "days": {
+            "type": "string",
+            "description": "趋势天数，默认 14"
+          },
+          "top": {
+            "type": "string",
+            "description": "返回域名数，默认 5"
+          }
+        },
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "scenarios": [
+          "cost_analysis"
+        ]
+      }
+    },
+    {
+      "name": "cdn_url_breakdown",
+      "description": "CDN 域名的 URL/文件级流量下钻：哪些文件在烧流量、峰值日较前日谁涨了（流量突增归因）",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "domain": {
+            "type": "string",
+            "description": "CDN 域名，如 cdn.example.com"
+          },
+          "days": {
+            "type": "string",
+            "description": "默认 7，最多 30"
+          },
+          "top": {
+            "type": "string",
+            "description": "默认 10"
+          }
+        },
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "scenarios": [
+          "cost_analysis",
+          "link_fault",
+          "host_res"
+        ]
+      }
+    },
+    {
+      "name": "cost_anomaly_list",
+      "description": "查近 14 天成本异动记录（池将耗尽/包刚耗尽/按量突增/新增费用项，含确认状态）",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "scenarios": [
+          "cost_analysis"
+        ]
+      }
+    },
+    {
+      "name": "db_health",
+      "description": "查下游 RDS/Redis 关键指标（CPU/内存/磁盘/连接/平均RT），含各指标最高实例读数，看是否有下游瓶颈",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "window": {
+            "type": "string",
+            "description": "1h/6h/24h，默认 24h"
+          }
+        },
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "scenarios": [
+          "link_fault",
+          "dba"
+        ]
+      }
+    },
+    {
+      "name": "dba_space_trend",
+      "description": "查某 RDS 实例空间近 14 天趋势（数据/日志/备份/磁盘，含 14 天增量）",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "instance_id": {
+            "type": "string",
+            "description": "实例ID或名称（可先 rds_list）"
+          }
+        },
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "scenarios": [
+          "dba"
+        ]
+      }
+    },
+    {
+      "name": "expiry_list",
+      "description": "查即将到期的域名/SSL证书/包年资产/资源包清单（90 天内，按剩余天数升序）",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "scenarios": [
+          "cost_analysis"
+        ]
+      }
+    },
+    {
+      "name": "find_domain",
+      "description": "按关键词查找已知链路域名（把『xxx.com打不开』对准到具体域名），返回后端/流量/健康概要",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "keyword": {
+            "type": "string",
+            "description": "域名或关键词，如 example.com 或 www.example.com"
+          }
+        },
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "scenarios": [
+          "link_fault"
+        ]
+      }
+    },
+    {
+      "name": "host_metrics",
+      "description": "查主机内存/CPU/磁盘水位时间线：峰值时刻、峰值、当前值（资源类问题先查这个定位事发时刻）",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "instance": {
+            "type": "string",
+            "description": "ECS 实例ID或名称"
+          },
+          "window": {
+            "type": "string",
+            "description": "1h/6h/24h，默认 24h"
+          }
+        },
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "scenarios": [
+          "host_res",
+          "link_fault"
+        ]
+      }
+    },
+    {
+      "name": "instance_cost_top",
+      "description": "查某产品近 N 天费用 Top 实例（钱具体花在哪台机器/哪个域名上）。可按 account_id 过滤",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "product": {
+            "type": "string",
+            "description": "产品关键词"
+          },
+          "days": {
+            "type": "string",
+            "description": "默认 14"
+          },
+          "account_id": {
+            "type": "string",
+            "description": "云账号ID过滤（可选，缺省=全部账号聚合）"
+          }
+        },
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "scenarios": [
+          "cost_analysis"
+        ]
+      }
+    },
+    {
+      "name": "object_chain",
+      "description": "对象全景因果链：域名/实例近 N 天的多层同窗读数（CDN/SLB/应用/主机/DB/变更/钱）+ 联动变化事件——跨层分析第一入口",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "object": {
+            "type": "string",
+            "description": "域名或实例（如 cdn.example.com / i-xxx）"
+          },
+          "days": {
+            "type": "string",
+            "description": "默认 7，最多 30"
+          }
+        },
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "scenarios": [
+          "link_fault",
+          "host_res",
+          "cost_analysis",
+          "dba"
+        ]
+      }
+    },
+    {
+      "name": "pack_pools",
+      "description": "查全部资源包抵扣能力池：类型/包数/剩余/剩余比例（告警统计方式是池不是单包）。可按 account_id 过滤",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "account_id": {
+            "type": "string",
+            "description": "云账号ID过滤（可选，缺省=全部账号聚合）"
+          }
+        },
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "scenarios": [
+          "cost_analysis"
+        ]
+      }
+    },
+    {
+      "name": "path_latency_detail",
+      "description": "查域名下各接口路径的响应时间（平均/p95）与 5xx：定位到底哪个 URI 慢。用户点名 /api/xxx 慢时先查这个",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "host": {
+            "type": "string",
+            "description": "完整域名（先 find_domain 拿到）"
+          },
+          "path": {
+            "type": "string",
+            "description": "路径或前缀，如 /api/order（可选，缺省=全部 URI）"
+          },
+          "window": {
+            "type": "string",
+            "description": "1h/6h/24h，默认 24h"
+          },
+          "top": {
+            "type": "string",
+            "description": "返回条数，默认 10"
+          }
+        },
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "scenarios": [
+          "link_fault"
+        ]
+      }
+    },
+    {
+      "name": "pool_usage_trend",
+      "description": "查某类资源包的每日消耗趋势、平均/最近日消耗、几天耗尽（如 CDN 流量包、日志服务包）。可按 account_id 过滤",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "commodity": {
+            "type": "string",
+            "description": "包类型关键词，如 cdn / dcdn / sls / oss / csk"
+          },
+          "days": {
+            "type": "string",
+            "description": "趋势天数，默认 14"
+          },
+          "account_id": {
+            "type": "string",
+            "description": "云账号ID过滤（可选，缺省=全部账号聚合）"
+          }
+        },
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "scenarios": [
+          "cost_analysis"
+        ]
+      }
+    },
+    {
+      "name": "process_logs",
+      "description": "查进程对应的应用日志：服务名归一匹配 AppName，看事发时段它在跑什么（日志量形状/级别/内容样本）",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "process": {
+            "type": "string",
+            "description": "进程名，如 nginx / java / xxx.WinService.exe"
+          },
+          "around": {
+            "type": "string",
+            "description": "事发时刻如 2026-10-07 19:04（可选）"
+          },
+          "window": {
+            "type": "string",
+            "description": "1h/6h/24h，默认 24h"
+          }
+        },
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "scenarios": [
+          "host_res"
+        ]
+      }
+    },
+    {
+      "name": "process_top",
+      "description": "查进程级 top（内存或 CPU）：各进程峰值/日常水位/突变时刻——谁在吃资源",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "instance": {
+            "type": "string",
+            "description": "ECS 实例ID或名称"
+          },
+          "metric": {
+            "type": "string",
+            "description": "memory/cpu，默认 memory"
+          },
+          "window": {
+            "type": "string",
+            "description": "1h/6h/24h，默认 24h"
+          },
+          "around": {
+            "type": "string",
+            "description": "聚焦时刻如 2026-10-07 19:05（可选）"
+          }
+        },
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "scenarios": [
+          "host_res"
+        ]
+      }
+    },
+    {
+      "name": "product_cost_trend",
+      "description": "查某产品的日成本趋势（按量/包月拆分，T+1 账单统计方式），看费用是否突增。可按 account_id 过滤",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "product": {
+            "type": "string",
+            "description": "产品关键词，如 cdn / oss / ecs / rds"
+          },
+          "days": {
+            "type": "string",
+            "description": "趋势天数，默认 14"
+          },
+          "account_id": {
+            "type": "string",
+            "description": "云账号ID过滤（可选，缺省=全部账号聚合）"
+          }
+        },
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "scenarios": [
+          "cost_analysis"
+        ]
+      }
+    },
+    {
+      "name": "rds_list",
+      "description": "查 RDS 实例清单（引擎/状态/到期），下钻慢SQL或空间前先看这个。可按 account_id 过滤",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "account_id": {
+            "type": "string",
+            "description": "云账号ID过滤（可选，缺省=全部账号聚合）"
+          }
+        },
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "scenarios": [
+          "dba"
+        ]
+      }
+    },
+    {
+      "name": "recent_changes",
+      "description": "云上变更时间线：谁在什么时候改了什么（重启/改配置/扩容等）。排障第一问——先查这个再查指标",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "hours": {
+            "type": "string",
+            "description": "回看小时数，默认 48"
+          },
+          "keyword": {
+            "type": "string",
+            "description": "按资源/操作/人过滤，可选"
+          },
+          "account_id": {
+            "type": "string",
+            "description": "云账号ID，缺省/0=全部账号"
+          }
+        },
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "scenarios": [
+          "link_fault",
+          "cost_analysis",
+          "dba",
+          "host_res"
+        ]
+      }
+    },
+    {
+      "name": "slb_5xx_detail",
+      "description": "查域名 5xx 明细：具体哪些 URI、什么状态码、哪个后端返回的",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "host": {
+            "type": "string",
+            "description": "完整域名"
+          },
+          "window": {
+            "type": "string",
+            "description": "1h/6h/24h，默认 24h"
+          }
+        },
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "scenarios": [
+          "link_fault"
+        ]
+      }
+    },
+    {
+      "name": "slb_overview",
+      "description": "查域名在 SLB 层的健康：状态码分布、5xx率、平均RT、按后端分组。窗口默认 24h",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "host": {
+            "type": "string",
+            "description": "完整域名（先 find_domain 拿到）"
+          },
+          "window": {
+            "type": "string",
+            "description": "1h/6h/24h，默认 24h"
+          }
+        },
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "scenarios": [
+          "link_fault"
+        ]
+      }
+    },
+    {
+      "name": "slowlog_top",
+      "description": "查某 RDS 实例的慢SQL Top（执行次数/耗时/SQL 摘要），定位慢查询",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "instance_id": {
+            "type": "string",
+            "description": "实例ID或名称（可先 rds_list）"
+          },
+          "days": {
+            "type": "string",
+            "description": "1~7，默认 7"
+          }
+        },
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "scenarios": [
+          "dba"
+        ]
+      }
+    },
+    {
+      "name": "space_suspects",
+      "description": "空间上涨的表级嫌疑：从 SQL 证据找膨胀源（写语句大扫描）与临时文件源（大扫描+聚合/排序），定位到表",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "instance_id": {
+            "type": "string",
+            "description": "RDS 实例ID（可先 rds_list）"
+          },
+          "days": {
+            "type": "string",
+            "description": "回看天数，默认 3"
+          }
+        },
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "scenarios": [
+          "dba"
+        ]
+      }
+    },
+    {
+      "name": "topology_arch",
+      "description": "资产架构图数据：分层分组（接入层/网关层/应用层/大数据/中间件/数据库/第三方） + 组件/集群框 + 依赖连线 + 数据新鲜度。redact=1 为脱敏版（对外）",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "redact": {
+            "type": "string",
+            "description": "1=脱敏版，默认 0"
+          }
+        },
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "scenarios": [
+          "topology"
+        ]
+      }
+    }
+  ]
+}

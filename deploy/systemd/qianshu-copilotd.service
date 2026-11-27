@@ -1,0 +1,31 @@
+# qianshu-copilotd.service —— 千枢智能体独立运行时 systemd unit
+# 兼容说明：unit 由 deploy/qianshu-copilotd.service 迁入 deploy/systemd/；参数按
+#  docs/active/engineering.md §8 落定：--config 显式指定、127.0.0.1:18810 文件 token、
+#  日志 /tmp/qianshu-copilotd.log、与后端同机不同生命周期。
+#
+# 安装（与 qianshu-backend.service 一起）：
+#   cp deploy/systemd/qianshu-copilotd.service /etc/systemd/system/
+#   systemctl daemon-reload && systemctl enable --now qianshu-copilotd
+# （install.sh --mode source 自动完成；compose 形态由 copilotd 服务容器承担）
+#
+# 语义：与千枢 FastAPI（qianshu-backend）同机不同进程、不同生命周期——千枢挂掉时
+# 本守护仍存活，负责定位/拉起千枢（10s 探测、2 次失联拉起、退避 30~300s，验收=kill -9
+# 后 2 分钟内拉起）。纯标准库实现，不依赖 backend/.venv。配置白名单校验只许管理千枢自身
+# （start_cmd 禁任意命令、禁 8000 邻居/8810 平台端口）。
+[Unit]
+Description=Qianshu Copilot Daemon (independent platform lifecycle watchdog)
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/qianshu/backend
+Environment=TZ=Asia/Shanghai
+ExecStart=/usr/bin/python3 -m app.copilotd --config /opt/qianshu/config/qianshu-copilotd.json
+Restart=always
+RestartSec=5
+# 独立运行时：不随千枢后端启停而启停
+# KillMode 默认 control-group；daemon 自身优雅退出（SIGTERM）
+LimitNOFILE=65535
+
+[Install]
+WantedBy=multi-user.target

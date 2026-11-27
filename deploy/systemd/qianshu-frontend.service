@@ -1,0 +1,23 @@
+# qianshu-frontend.service —— 千枢前端开发服务器（vite :5273，仅开发机）
+#
+# 生产形态【不要】启用本 unit：frontend/dist 由 nginx 托管 + 反代后端
+# （deploy/nginx/qianshu.conf，install.sh --mode source 自动落位，nginx 由发行包自带 systemd）。
+#
+# 安装（开发机）：
+#   cp deploy/systemd/qianshu-frontend.service /etc/systemd/system/
+#   systemctl daemon-reload && systemctl enable --now qianshu-frontend
+# 日志：journalctl -u qianshu-frontend -f
+[Unit]
+Description=Qianshu Frontend Dev Server (vite :5273, dev only)
+After=network.target qianshu-backend.service
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/qianshu/frontend
+Environment=TZ=Asia/Shanghai
+ExecStart=/opt/qianshu/deploy/bin/qianshu-frontend.sh
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

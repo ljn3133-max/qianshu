@@ -1,0 +1,216 @@
+# 千枢运维平台 · 单机全家桶（产品交付形态）
+# 起停：docker compose up -d ；或用 install.sh 一键装（.env 首次自动生成）
+# 端口：前端 8080（对外）｜ 后端 8810（调试/集成）｜ copilotd 127.0.0.1:18810 ｜ OTLP 4317/4318
+#       VM/VictoriaLogs 仅容器网内
+# 数据持久化目录：.env 设 QIANSHU_DATA_DIR=/data/qianshu 可把全部数据卷挪到独立数据盘
+#   （默认 ./data 跟安装目录走，现状零变化）；建议由 deploy/sysprep.sh 预检给出建议值
+# 部署架构全量口径：docs/active/deployment.md（含 HA 路线图 / 保留策略 / 缓存 / 性能阈值）
+services:
+  backend:
+    # 离线包形态随包带 qianshu-images-<版本>.tar，install.sh 自动 load 后直接 up（不再 build）；
+    # 源码形态两者并存，`up -d --build` 仍按 build 重建。版本标签与发布包一致。
+    image: qianshu-backend:${QIANSHU_IMAGE_TAG:-0.3.0}
+    build:
+      context: ./backend
+      args:
+        # pip 源可换（受限网络/海外客户）：.env 设 PIP_INDEX=https://pypi.org/simple 等
+        # 首个源失败时自动按 PIP_FALLBACK_INDEX（华为 → 阿里云 → 官方）回退；内网可设为空禁用回退
+        PIP_INDEX: ${PIP_INDEX:-https://pypi.tuna.tsinghua.edu.cn/simple}
+        PIP_FALLBACK_INDEX: ${PIP_FALLBACK_INDEX:-https://mirrors.huaweicloud.com/repository/pypi/simple https://mirrors.aliyun.com/pypi/simple https://pypi.org/simple}
+    container_name: qianshu-backend
+    restart: unless-stopped
+    environment:
+      # 数据库固定为栈内 postgres（唯一数据库，SQLite 已废除）。口令只支持字母数字
+      # （install.sh 生成随机十六进制），URL 不做百分号编码；外部 PG 请用 source 形态。
+      DATABASE_URL: postgresql://${POSTGRES_USER:-qianshu}:${POSTGRES_PASSWORD:?请在 .env 设置 POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-qianshu}
+      ENV: ${ENV:-prod}
+      TZ: ${TZ:-Asia/Shanghai}                            # 定时任务按自然日跑，时区不能错
+      SECRET_KEY: ${SECRET_KEY:?请在 .env 里设置 SECRET_KEY}
+      MASTER_KEY: ${MASTER_KEY:?请在 .env 里设置 MASTER_KEY}
+      VM_URL: http://vm:8428
+      VICTORIALOGS_URL: http://victorialogs:9428
+      INIT_ADMIN_USERNAME: ${INIT_ADMIN_USERNAME:-admin}
+      INIT_ADMIN_PASSWORD: ${INIT_ADMIN_PASSWORD:-}     # 空=首启随机生成并在日志打印
+      COPILOTD_BRIDGE_TOKEN: ${COPILOTD_BRIDGE_TOKEN:-} # copilotd 自愈事件回写桥
+      K8S_LOG_RETENTION_DAYS: ${K8S_LOG_RETENTION_DAYS:-7}
+      # 数据保留（2026-11-06 系统参数化+实时生效，docs/active/deployment.md §5 /
+      # docs/active/deployment.md）：0=永久（至引擎上限）。VM/VL 保留天数 ≤ 上限内
+      # **实时生效**（查询口径+渐进清理），不再随重建容器生效；上限 *_MAX_DAYS 是
+      # 引擎启动参数口径（见 vm/victorialogs 服务），调大上限才需重建容器
+      VM_RETENTION_DAYS: ${VM_RETENTION_DAYS:-180}
+      VL_RETENTION_DAYS: ${VL_RETENTION_DAYS:-30}
+      VM_RETENTION_MAX_DAYS: ${VM_RETENTION_MAX_DAYS:-365}
+      VL_RETENTION_MAX_DAYS: ${VL_RETENTION_MAX_DAYS:-180}
+      RETENTION_LLM_DAYS: ${RETENTION_LLM_DAYS:-90}
+      RETENTION_AUDIT_DAYS: ${RETENTION_AUDIT_DAYS:-180}
+      RETENTION_MSG_DAYS: ${RETENTION_MSG_DAYS:-90}
+      RETENTION_EVENT_DAYS: ${RETENTION_EVENT_DAYS:-180}
+      # 以下按客户环境注入（安装向导可代写）：
+      SLS_ENDPOINT: ${SLS_ENDPOINT:-cn-hangzhou.log.aliyuncs.com}
+      SLS_SLB_TARGETS: ${SLS_SLB_TARGETS:-}
+      SLS_APP_LOG: ${SLS_APP_LOG:-}
+      SLS_CDN_TARGET: ${SLS_CDN_TARGET:-}
+      SLS_INSPECTION_TARGETS: ${SLS_INSPECTION_TARGETS:-[]}
+      PRODUCT_CARDS: ${PRODUCT_CARDS:-}
+      # 每日数据库备份落卷（2026-11-09）：容器重建不丢备份；运行时可写配置另走
+      # env_kv 库双写（services/env_store），同样重建不丢——.env 只是兼容层
+      BACKUP_DIR: /backups
+      # 版本化升级 SQL 目录（随代码包分发；启动时按版本应用，只读挂载）
+      UPDATE_DATA_DIR: /update-data
+    volumes:
+      # /data 仅保留为旧 SQLite 数据检测点：新库在 PostgreSQL；库为空且发现旧
+      # qianshu.db 时后端拒绝启动，避免静默使用空库（不做 SQLite 数据迁移）。
+      - ${QIANSHU_DATA_DIR:-./data}/db:/data
+      - ${QIANSHU_DATA_DIR:-./data}/backups:/backups
+      - ./update-data:/update-data:ro
+    # 文件句柄上限与源码形态 unit 的 LimitNOFILE=65535 对齐（采集循环多）
+    ulimits:
+      nofile:
+        soft: 65535
+        hard: 65535
+    depends_on:
+      postgres:
+        condition: service_healthy
+      vm:
+        condition: service_healthy
+    # 多 worker：并发场景 5-8 倍提升（性能评审改进项，2026-10-28）。
+    # 24 个后台采集/检测循环有进程级 leader 文件锁，只跑一份（2026-11-06 收口），
+    # 多 worker 只加 API 并发，不重复采集/告警。容器内端口统一 8810（与源码形态一致）。
+    # --proxy-headers 纵深防御第二层：只信可信代理段的 X-Forwarded-*（第一层是应用内解析）。
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8810", "--workers", "4",
+              "--proxy-headers",
+              "--forwarded-allow-ips=${FORWARDED_ALLOW_IPS:-127.0.0.1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16}"]
+    ports:
+      # 宿主端口可在 .env 覆盖（避开已占用端口）：BACKEND_PORT / FRONTEND_PORT / COPILOTD_PORT / OTLP_*
+      - "${BACKEND_BIND_HOST:-127.0.0.1}:${BACKEND_PORT:-8810}:8810"
+      - "127.0.0.1:${COPILOTD_PORT:-18810}:18810"   # copilotd 生命周期通道（共享 netns 后由本容器发布）
+    healthcheck:
+      # python-slim 无 curl/wget，用 stdlib 探测（200=就绪；安装向导口无鉴权）
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8810/api/bootstrap/status', timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
+
+  # 千枢智能体独立运行时（看门狗 + 生命周期通道 127.0.0.1:18810）。
+  # 与 backend 共享网络/进程空间：api_url 127.0.0.1:8810 有效（config 白名单只许本机地址）、
+  # 看门狗可定位 backend 进程（假死时 SIGTERM 重启）。容器级故障由编排器 restart 托底——
+  # "kill -9 不死"的独立生命周期硬验收在源码/主机形态成立（docs/active/deployment.md §2.1）。
+  copilotd:
+    image: qianshu-backend:${QIANSHU_IMAGE_TAG:-0.3.0}
+    build:
+      context: ./backend
+      args:
+        PIP_INDEX: ${PIP_INDEX:-https://pypi.tuna.tsinghua.edu.cn/simple}
+        PIP_FALLBACK_INDEX: ${PIP_FALLBACK_INDEX:-https://mirrors.huaweicloud.com/repository/pypi/simple https://mirrors.aliyun.com/pypi/simple https://pypi.org/simple}
+    container_name: qianshu-copilotd
+    restart: unless-stopped
+    network_mode: "service:backend"
+    # pid 用 container: 形式（= docker/podman 引擎原生语法）：podman-compose 不翻译
+    # "service:"（--pid service:xxx 引擎直接拒），container: 两个引擎都认（2026-11-06 自测）
+    pid: "container:qianshu-backend"
+    working_dir: /opt/qianshu/backend
+    command: ["python3", "-m", "app.copilotd", "--config", "/opt/qianshu/config/qianshu-copilotd.json"]
+    environment:
+      ENV: ${ENV:-prod}
+      TZ: ${TZ:-Asia/Shanghai}
+      # 看门狗拉起 start_cmd 时继承这些环境（与 backend 一致，保证拉起的实例连同一个库）
+      DATABASE_URL: postgresql://${POSTGRES_USER:-qianshu}:${POSTGRES_PASSWORD:?请在 .env 设置 POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-qianshu}
+      SECRET_KEY: ${SECRET_KEY:?请在 .env 里设置 SECRET_KEY}
+      MASTER_KEY: ${MASTER_KEY:?请在 .env 里设置 MASTER_KEY}
+      VM_URL: http://vm:8428
+      # 看门狗拉起的 backend 进程继承本环境（复用同一份版本化升级 SQL）
+      UPDATE_DATA_DIR: /update-data
+    volumes:
+      - ./backend:/opt/qianshu/backend          # 配置白名单要求 platform_dir 内含 backend/app/main.py
+      - ./update-data:/update-data:ro           # 看门狗重启 backend 时按版本应用升级 SQL
+      - ./config:/opt/qianshu/config            # copilotd 配置/token（token 自动生成 0600）
+      - ${QIANSHU_DATA_DIR:-./data}:/opt/qianshu/data   # actions.jsonl 动作留痕
+      - ${QIANSHU_DATA_DIR:-./data}/db:/data    # 旧 SQLite 检测点（与 backend 一致）
+      - ./.env:/opt/qianshu/backend/.env:ro     # bridge token 单一事实源（COPILOTD_BRIDGE_TOKEN）
+    depends_on:
+      - backend
+
+  frontend:
+    image: qianshu-frontend:${QIANSHU_IMAGE_TAG:-0.3.0}
+    build:
+      context: ./frontend
+      args:
+        # npm 源可换（如内网镜像 https://registry.npmmirror.com）；空=npm 默认源
+        NPM_REGISTRY: ${NPM_REGISTRY:-}
+    container_name: qianshu-frontend
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "${FRONTEND_PORT:-8080}:80"
+    healthcheck:
+      test: ["CMD", "wget", "-qO", "/dev/null", "http://127.0.0.1/"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  vm:
+    image: victoriametrics/victoria-metrics:v1.102.0
+    container_name: qianshu-vm
+    restart: unless-stopped
+    # 引擎上限层（2026-11-06 存储保留实时生效）：-retentionPeriod 是**上限**（部署时定，
+    # 勿填 0——会生成 0d 无效参）。用户在系统设置调的 VM_RETENTION_DAYS ≤ 上限时实时生效
+    # （查询过滤+死序列渐进清理），不再重建容器；调大超过上限才需改上限并重建。
+    command: ["-storageDataPath=/storage", "-retentionPeriod=${VM_RETENTION_MAX_DAYS:-365}d"]
+    volumes:
+      - ${QIANSHU_DATA_DIR:-./data}/victoriametrics:/storage
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8428/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  victorialogs:
+    image: victoriametrics/victoria-logs:v1.53.0
+    container_name: qianshu-victorialogs
+    restart: unless-stopped
+    # 同 vm 服务：-retentionPeriod 是上限层（部署时定，勿填 0），VL_RETENTION_DAYS ≤ 上限
+    # 实时生效。-delete.enable 开删除 API（/delete/run_task）：保留期物理删超期日志用
+    # （官方提示删除任务重写全量存储，平台侧已限频 24h/次）；此旗标随重建生效
+    command: ["-storageDataPath=/storage", "-retentionPeriod=${VL_RETENTION_MAX_DAYS:-180}d", "-delete.enable"]
+    volumes:
+      - ${QIANSHU_DATA_DIR:-./data}/victorialogs:/storage
+    # 无 healthcheck：scratch 镜像内无 shell/探测工具（无法 exec 探活）；
+    # 当前后端未直写 VL（预留，docs/active/deployment.md §1.4），挂了不影响主链路
+
+  # OpenTelemetry 接入网关（OTLP → VM）：客户应用零改造上报，K8s/中间件 OTel 生态直通
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.96.0
+    container_name: qianshu-otel
+    restart: unless-stopped
+    command: ["--config=/etc/otelcol/config.yaml"]
+    volumes:
+      - ./config/otel-collector.yaml:/etc/otelcol/config.yaml:ro
+    ports:
+      - "${OTLP_BIND_HOST:-127.0.0.1}:${OTLP_GRPC_PORT:-4317}:4317"
+      - "${OTLP_BIND_HOST:-127.0.0.1}:${OTLP_HTTP_PORT:-4318}:4318"
+    depends_on:
+      - vm
+
+  # PostgreSQL 16（唯一数据库，随栈默认启动）。
+  # 首次安装由 install.sh 在 .env 生成 POSTGRES_PASSWORD；手工部署必须自行设置。
+  # 仅容器网络内可达（不发布宿主端口）；排障用 docker compose exec postgres psql。
+  # 数据库卷持久化在 ${QIANSHU_DATA_DIR}/postgres，重建容器不丢。
+  postgres:
+    image: postgres:16
+    container_name: qianshu-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-qianshu}
+      POSTGRES_USER: ${POSTGRES_USER:-qianshu}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?请在 .env 设置 POSTGRES_PASSWORD}
+      TZ: ${TZ:-Asia/Shanghai}
+    volumes:
+      - ${QIANSHU_DATA_DIR:-./data}/postgres:/var/lib/postgresql/data   # 卷持久化，重建容器不丢
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-qianshu} -d $${POSTGRES_DB:-qianshu}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5

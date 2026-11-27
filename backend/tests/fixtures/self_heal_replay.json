@@ -1,0 +1,131 @@
+{
+  "description": "脱敏后的真实问题回放集：只含合成账号、合成错误文本，不含凭证/真实日志。",
+  "cases": [
+    {
+      "name": "阿里云资产同步连接被断开",
+      "issue": {
+        "source": "onboarding",
+        "account_id": 101,
+        "run_id": 501,
+        "capability": "assets",
+        "severity": "warning",
+        "title": "资产同步失败：RemoteDisconnected",
+        "reason_code": "asset_sync_failed",
+        "error_class": "RemoteDisconnected",
+        "summary_md": "资产同步失败：RemoteDisconnected",
+        "source_ref_json": "{\"scope\": {\"region\": \"cn-hz\", \"password\": \"synthetic-secret\"}}",
+        "evidence_json": "{\"error_signature\": \"RemoteDisconnected synthetic\", \"retryable\": true}",
+        "status": "open"
+      },
+      "expected": {"risk": "R0", "recipes": ["refresh_cloud_assets"], "need_user": false}
+    },
+    {
+      "name": "SLS 日志发现失败",
+      "issue": {
+        "source": "onboarding",
+        "account_id": 102,
+        "run_id": 502,
+        "capability": "logs",
+        "severity": "warning",
+        "title": "日志发现未完成",
+        "reason_code": "log_discovery_failed",
+        "error_class": "ConnectionError",
+        "summary_md": "SLS 完整发现未执行",
+        "source_ref_json": "{\"scope\": {\"project\": \"synthetic-project\"}}",
+        "evidence_json": "{\"error_signature\": \"connection timeout\", \"retryable\": true}",
+        "status": "open"
+      },
+      "expected": {"risk": "R0", "recipes": ["rediscover_logs"], "need_user": false}
+    },
+    {
+      "name": "指标回读未通过",
+      "issue": {
+        "source": "cloud_sync",
+        "account_id": 103,
+        "run_id": 0,
+        "capability": "metrics",
+        "severity": "warning",
+        "title": "指标回读未通过",
+        "reason_code": "metric_readback_failed",
+        "error_class": "TimeoutError",
+        "summary_md": "指标写入后回读为空",
+        "source_ref_json": "{}",
+        "evidence_json": "{\"error_signature\": \"read timeout\", \"retryable\": true}",
+        "status": "open"
+      },
+      "expected": {"risk": "R0", "recipes": ["revalidate_metric_ingest"], "need_user": false}
+    },
+    {
+      "name": "成本账单重采",
+      "issue": {
+        "source": "cloud_sync",
+        "account_id": 104,
+        "run_id": 0,
+        "capability": "cost",
+        "severity": "warning",
+        "title": "账单采集缺口",
+        "reason_code": "cost_collect_failed",
+        "error_class": "HTTPError",
+        "summary_md": "指定账单日采集失败",
+        "source_ref_json": "{\"scope\": {\"bill_date\": \"2026-11-20\"}}",
+        "evidence_json": "{\"error_signature\": \"synthetic bill api error\", \"retryable\": true}",
+        "status": "open"
+      },
+      "expected": {"risk": "R0", "recipes": ["recollect_cost_day"], "need_user": false}
+    },
+    {
+      "name": "平台健康持续异常（R2 模式）",
+      "issue": {
+        "source": "api_5xx",
+        "account_id": 0,
+        "run_id": 0,
+        "capability": "",
+        "severity": "critical",
+        "title": "接口持续返回 502",
+        "reason_code": "http_502",
+        "error_class": "HTTP 502",
+        "summary_md": "GET /api/dashboard/summary 持续 502",
+        "source_ref_json": "{\"path\": \"/api/dashboard/summary\"}",
+        "evidence_json": "{\"error_signature\": \"HTTP 502\", \"retryable\": false}",
+        "status": "open"
+      },
+      "expected": {"risk": "R2", "recipes": ["restart_platform"], "need_user": false}
+    },
+    {
+      "name": "凭证失效需要用户处理",
+      "issue": {
+        "source": "onboarding",
+        "account_id": 105,
+        "run_id": 503,
+        "capability": "assets",
+        "severity": "warning",
+        "title": "云账号认证失败",
+        "reason_code": "invalid_credential",
+        "error_class": "AccessDenied",
+        "summary_md": "AccessDenied synthetic",
+        "source_ref_json": "{}",
+        "evidence_json": "{\"error_signature\": \"AccessDenied\", \"retryable\": true}",
+        "status": "open"
+      },
+      "expected": {"risk": "R0", "recipes": [], "need_user": true}
+    },
+    {
+      "name": "告警规则缺失补种",
+      "issue": {
+        "source": "alert",
+        "account_id": 106,
+        "run_id": 0,
+        "capability": "",
+        "severity": "critical",
+        "title": "默认告警规则缺失",
+        "reason_code": "alert_rules_missing",
+        "error_class": "",
+        "summary_md": "账号缺少默认告警规则",
+        "source_ref_json": "{}",
+        "evidence_json": "{\"error_signature\": \"no default rules\", \"retryable\": false}",
+        "status": "open"
+      },
+      "expected": {"risk": "R1", "recipes": ["reseed_missing_alert_rules"], "need_user": false}
+    }
+  ]
+}

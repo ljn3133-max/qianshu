@@ -1,0 +1,139 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: Backend · compile + isolated mock tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    # SQLite 已废除：测试用一次性 PostgreSQL。测试脚本各自 CREATE/DROP 唯一命名
+    # 的临时库（tests/pg_test_env.py），并发跑也互不干扰。
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: qianshutest
+          POSTGRES_PASSWORD: qianshutestpw
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U qianshutest -d postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      QIANSHU_TEST_PG_URL: postgresql://qianshutest:qianshutestpw@127.0.0.1:5432/postgres
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.9"
+          cache: pip
+          cache-dependency-path: |
+            backend/requirements.txt
+            backend/constraints.txt
+
+      - name: Install dependencies (pinned direct deps)
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r backend/requirements.txt -c backend/constraints.txt
+
+      - name: Byte-compile backend
+        run: python -m compileall -q backend/app backend/scripts
+
+      - name: Static structure fingerprint
+        run: python tests/quality/structure_fingerprint.py
+
+      - name: Isolated mock tests (disposable PostgreSQL / no network / no notifications)
+        working-directory: backend
+        shell: bash
+        run: |
+          set -euo pipefail
+          # pytest 也可单独跑：QIANSHU_TEST_PG_URL 未设置时测试直接失败并给出实例化命令
+          python -c 'import os, psycopg2; psycopg2.connect(os.environ["QIANSHU_TEST_PG_URL"])' \
+            || { echo "PostgreSQL service 未就绪"; exit 1; }
+          fail=0
+          for f in tests/test_*_mock.py; do
+            case "$f" in
+              *cdp*) echo "== skip (needs Chrome): $f"; continue ;;
+            esac
+            echo "== $f"
+            python "$f" || fail=1
+          done
+          exit "$fail"
+
+  frontend:
+    name: Frontend · npm ci + build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+  browser:
+    name: Frontend · change-card mock (Chrome CDP)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.9"
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Build and serve frontend
+        working-directory: frontend
+        run: |
+          npm run build
+          nohup npm run preview -- --host 127.0.0.1 --port 5273 --strictPort \
+            > /tmp/vite-preview.log 2>&1 &
+          for _ in $(seq 1 60); do
+            if curl -sf http://127.0.0.1:5273/ >/dev/null; then exit 0; fi
+            sleep 1
+          done
+          cat /tmp/vite-preview.log
+          exit 1
+
+      - name: Change-card mock (no backend, all /api mocked in page)
+        run: |
+          google-chrome --version
+          pip install websocket-client
+          QIANSHU_SITE=http://127.0.0.1:5273 python backend/tests/test_agent_card_cdp_mock.py
+
+  # 端到端（浏览器走查/视觉基线）需要真实后端 + 一次性测试身份，默认不在每次 push 跑。
+  # 需要时在具备环境变量的自托管 runner 上手动触发；详见 docs/active/engineering.md。

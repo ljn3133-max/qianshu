@@ -1,0 +1,39 @@
+# K8s 管理平台 · 测试用例
+# 高危操作用例=双确认语义（名称不符必须拒绝）；任务用例=状态机/日志/终止
+domains:
+  - name: 任务中心
+    cases:
+      - { name: 任务列表, api: "GET /k8mgmt/tasks", expect: "items 存在" }
+      - { name: 任务详情含关键字段, api: "GET /k8mgmt/tasks/1", expect: "存在" }
+      - { name: 任务日志接口, api: "GET /k8mgmt/tasks/1/logs", expect: "items 存在" }
+      - { name: 终止任务语义, api: "POST /k8mgmt/tasks/1/abort", expect: "存在" }
+  - name: 添加 Node
+    cases:
+      - { name: 提交添加节点任务, api: "POST /k8mgmt/nodes/add|{\"ip\":\"192.0.2.1\",\"ssh_user\":\"root\",\"master_ssh\":\"192.0.2.2\"}", expect: "task_id 存在" }
+      - { name: 任务状态可查, api: "GET /k8mgmt/tasks", expect: "items 存在" }
+  - name: 集群备份
+    cases:
+      - { name: 备份集列表, api: "GET /k8mgmt/backups", expect: "items 存在" }
+      - { name: 发起备份任务, api: "POST /k8mgmt/backups|{\"master_ssh\":\"192.0.2.2\"}", expect: "task_id 存在" }
+  - name: 集群升级
+    cases:
+      - { name: 版本监控, api: "GET /k8mgmt/upgrade/versions", expect: "存在" }
+      - { name: 废弃 API 预检查, api: "GET /k8mgmt/upgrade/precheck?target=1.30", expect: "存在" }
+      - { name: 预检未过禁止升级, api: "POST /k8mgmt/upgrade|{\"target_version\":\"1.29.0\",\"cluster_name\":\"x\",\"confirm_name\":\"wrong\"}", expect: "拦截" }
+  - name: 清空集群（高危）
+    cases:
+      - { name: 名称不符禁止清空, api: "POST /k8mgmt/cluster/wipe|{\"confirm_name\":\"wrong\"}", expect: "拦截" }
+  - name: 资源管理
+    cases:
+      - { name: Node 清单, api: "GET /k8mgmt/resources?kind=Node", expect: "items 存在" }
+      - { name: yaml 查看, api: "GET /k8mgmt/resources/Node/node-1/yaml", expect: "存在" }
+      - { name: 禁止调度确认门, api: "POST /k8mgmt/resources/Node/node-1/cordon|{\"confirm_name\":\"wrong\"}", expect: "拦截" }
+      - { name: Helm 列表, api: "GET /k8mgmt/resources?kind=Helm", expect: "items 存在" }
+  - name: 统计与事件
+    cases:
+      - { name: 资源统计, api: "GET /k8mgmt/stats", expect: "存在" }
+      - { name: 事件中心, api: "GET /k8mgmt/events", expect: "items 存在" }
+      - { name: 事件接诊断, api: "POST /k8mgmt/events/diagnose|{\"message\":\"BackOff\"}", expect: "存在" }
+  - name: 总览
+    cases:
+      - { name: 集群总览, api: "GET /k8mgmt/overview", expect: "存在" }

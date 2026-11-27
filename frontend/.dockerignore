@@ -1,0 +1,6 @@
+# 镜像构建排除：本地依赖/缓存/环境文件（dist 保留——离线包形态只有预构建 dist）
+node_modules/
+.vite/
+npm-debug.log*
+.env
+.env.*

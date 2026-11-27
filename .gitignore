@@ -1,0 +1,84 @@
+# 千枢仓库忽略清单
+# 运行数据、密钥、构建产物和未复核的现场材料不得入库。
+# 公开导出另由 deploy/export_public.py 按白名单执行；本文件不能替代历史泄露检查。
+
+# ---- 密钥与环境（绝不入库）----
+.env
+.env.*
+**/.env
+**/.env.*
+!.env.example
+backend/.env
+backend/.env.*
+secrets/
+*.pem
+*.key
+license.json
+config/*.token
+config/*.secret
+
+# ---- 运行数据（客户环境事实，绝不入库）----
+data/
+backups/
+*.db
+*.db-*
+*.db.*
+*.sqlite
+*.sqlite3
+qianshu.db
+*.bak
+*.bak.*
+*.bak-*
+logs/
+*.log
+
+# ---- 构建产物 / 离线包 ----
+dist/
+frontend/dist/
+frontend/node_modules/
+frontend/.vite/
+build/
+*.tar.gz
+*.zip
+
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# ---- 前端工具 ----
+node_modules/
+.eslintcache
+
+# ---- 私有协作与文档材料（本机保留，不进入公开仓库）----
+.claude/
+PLAN.md
+agent/knowledge/
+docs/archive/
+docs/tmp/
+# 具体开发域名由部署环境生成，不公开现场配置。
+frontend/vite.allowed-hosts.json
+
+# 截图可能包含真实资产、域名或账号信息；逐图复核前不公开。
+tests/quality/baseline/
+tests/quality/baseline/*-new.png
+tests/quality/baseline/*-old.png
+*.pid
+*.sock
+
+# ---- 编辑器 / 系统 ----
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+*~

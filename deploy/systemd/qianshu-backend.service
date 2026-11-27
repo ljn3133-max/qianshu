@@ -1,0 +1,29 @@
+# qianshu-backend.service —— 千枢 FastAPI 后端（API :8810 + 进程内采集调度）
+#
+# 安装：
+#   cp deploy/systemd/qianshu-backend.service /etc/systemd/system/
+#   systemctl daemon-reload && systemctl enable --now qianshu-backend
+# （install.sh --mode source 自动完成上述步骤）
+#
+# 说明：WorkingDirectory=backend 使 pydantic 自动加载 backend/.env（密钥/集成配置）；
+# 启动即自动建表+增量迁移+建初始管理员（无需手工初始化 DB）。
+# 日志走 journald：journalctl -u qianshu-backend -f
+[Unit]
+Description=Qianshu AIOps Platform Backend (FastAPI/uvicorn :8810 + in-process schedulers)
+# 唯一数据库=PostgreSQL：本机 PG15 与后端同机（install.sh 自动装）时先起库再起后端；
+# 接外部 PostgreSQL 时本机 unit 不存在，Wants 仅告警不阻断。
+After=network.target postgresql-15.service
+Wants=postgresql-15.service
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/qianshu/backend
+Environment=TZ=Asia/Shanghai
+ExecStart=/opt/qianshu/deploy/bin/qianshu-backend.sh
+Restart=always
+RestartSec=5
+# 后端是数据面中枢（24 个采集/检测循环），文件句柄需求大
+LimitNOFILE=65535
+
+[Install]
+WantedBy=multi-user.target

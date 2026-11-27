@@ -1,0 +1,27 @@
+# OpenTelemetry Collector：OTLP 接收 → VictoriaMetrics
+# 客户应用/Agent 按 OTLP 标准上报（http://<千枢>:4318），无需改千枢代码
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  batch:
+
+exporters:
+  # Prometheus 远程写 → VictoriaMetrics（VM 兼容 Prometheus remote write）
+  prometheusremotewrite:
+    endpoint: http://vm:8428/api/v1/write
+
+service:
+  pipelines:
+    metrics:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [prometheusremotewrite]
+    # traces 管线不配：0.96 的 prometheusremotewrite 只支持 metrics，配 traces 会让
+    # collector 启动即报 "telemetry type is not supported" 并重启循环。
+    # traces 需要独立后端；当前未配置 trace 存储，因此不启用该管线。

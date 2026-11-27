@@ -1,0 +1,36 @@
+# K8s 容器监控 · 测试用例
+# 语义：k8s 用例单独成文件（依赖测试集群），run_all 检测到 k8s_clusters 为空时标记"未接入跳过"
+domains:
+  - name: K8s 接入
+    cases:
+      - { name: 集群列表, api: "GET /k8s/clusters", expect: "列表" }
+      - { name: 资源统计, api: "GET /k8s/overview", expect: "存在" }
+  - name: K8s 资源清单
+    cases:
+      - { name: Pod 清单, api: "GET /k8s/resources?kind=Pod", expect: "items 存在" }
+      - { name: Service 清单, api: "GET /k8s/resources?kind=Service", expect: "items 存在" }
+      - { name: Ingress 清单, api: "GET /k8s/resources?kind=Ingress", expect: "items 存在" }
+      - { name: ns 筛选, api: "GET /k8s/resources?kind=Pod&namespace=default", expect: "items 存在" }
+      - { name: 手动扫描, api: "POST /k8s/scan", expect: "ok" }
+  - name: K8s 集群管理
+    cases:
+      - { name: 集群列表可见, api: "GET /k8s/clusters", expect: "列表" }
+      - { name: 集群总览含资源统计, api: "GET /k8s/overview", expect: "clusters 存在" }
+      - { name: 重复接入同名拦截, api: "POST /k8s/clusters|{\"name\":\"__EXISTING__\",\"api_url\":\"https://x:6443\",\"token\":\"t\"}", expect: "拦截" }
+      - { name: 重复接入同地址拦截, api: "POST /k8s/clusters|{\"name\":\"new-name-x\",\"api_url\":\"__EXISTING_URL__\",\"token\":\"t\"}", expect: "拦截" }
+      - { name: 多集群资源筛选, api: "GET /k8s/resources?kind=Pod&cluster_id=1", expect: "items 存在" }
+      - { name: 已存集群连通测试, api: "POST /k8s/clusters/1/test", expect: "ok" }
+  - name: K8s 日志平台
+    cases:
+      - { name: ns 日志查询, api: "GET /k8s/logs?namespace=default&limit=50", expect: "items 存在" }
+      - { name: 已销毁 pod 日志可查, api: "GET /k8s/logs?include_destroyed=1&limit=50", expect: "items 存在" }
+      - { name: 关键字检索, api: "GET /k8s/logs?keyword=error&limit=50", expect: "items 存在" }
+      - { name: 保留配置可读, api: "GET /k8s/log-retention", expect: "days 存在" }
+      - { name: 保留天数修改, api: "PUT /k8s/log-retention|{\"days\":3}", expect: "ok" }
+  - name: K8s 失败分析
+    cases:
+      - { name: 失败列表, api: "GET /k8s/failures?status=pending", expect: "items 存在" }
+      - { name: 诊断内容非空, api: "GET /k8s/failures?status=pending", expect: "items 存在" }
+      - { name: 批量忽略, api: "POST /k8s/failures/batch|{\"ids\":[],\"action\":\"ignore\"}", expect: "ok" }
+      - { name: 批量确认, api: "POST /k8s/failures/batch|{\"ids\":[],\"action\":\"confirm\",\"note\":\"已确认\"}", expect: "ok" }
+      - { name: 状态筛选, api: "GET /k8s/failures?status=confirmed", expect: "items 存在" }

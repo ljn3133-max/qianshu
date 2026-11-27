@@ -1,0 +1,11 @@
+# 千枢前端 · 离线镜像
+# 直接用离线包里预构建的 frontend/dist，不拉 node 镜像、不跑 npm ci（目标机/构建机都可零外网）。
+# 与 frontend/Dockerfile 的 nginx 运行时保持一致（同一 nginx.conf 模板与 DNS 发现逻辑）。
+# 固定 1.29：nginx 1.31 起写 pid 文件改用 pwritev，CentOS 7（kernel 3.10）上
+# Docker 26.1.4 的内置 seccomp 对该 syscall 返回 EPERM，容器启动即退出；1.27/1.29 已验证。
+# 升级基础镜像前必须回归目标内核与容器运行时组合。
+FROM nginx:1.29-alpine
+COPY dist /usr/share/nginx/html
+COPY nginx.conf /etc/nginx/templates/default.conf.template
+CMD ["/bin/sh", "-c", "export DNS_RESOLVER=$(awk '/^nameserver/{print $2; exit}' /etc/resolv.conf); exec /docker-entrypoint.sh nginx -g 'daemon off;'"]
+EXPOSE 80
