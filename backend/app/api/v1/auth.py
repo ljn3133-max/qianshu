@@ -127,8 +127,8 @@ def slider_verify(body: SliderVerifyIn, request: Request):
 @router.post("/login", response_model=LoginResponse, summary="账号密码登录")
 def login(body: LoginRequest, request: Request, db: Session = Depends(get_db)):
     """返回 12 小时 JWT 和当前用户信息。启用验证码时须携带有效验证码或滑块票据；
-    用户启用 TOTP 时还须提交 otp_code。外部自动化建议使用可吊销的 API Token，
-    不要在脚本中保存登录密码。"""
+    OTP_ENABLED 为真且用户启用 TOTP 时还须提交 otp_code（默认关闭，不做二步校验）。
+    外部自动化建议使用可吊销的 API Token，不要在脚本中保存登录密码。"""
     import time as _t
 
     from app.core.config import settings
@@ -155,8 +155,8 @@ def login(body: LoginRequest, request: Request, db: Session = Depends(get_db)):
         )
         db.commit()
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, t("auth.user_not_found", lang_of(request)))
-    if user is not None and verify_password(body.password, user.password_hash) and user.otp_enabled:
-        # TOTP 二步（容错前后 1 个时间窗）
+    # TOTP 二步（容错前后 1 个时间窗）：默认关闭，仅 OTP_ENABLED 且用户已启用时校验。
+    if getattr(settings, "OTP_ENABLED", False) and user.otp_enabled and verify_password(body.password, user.password_hash):
         ok_otp = body.otp_code and any(
             _totp(user.otp_secret, _t.time() + off) == body.otp_code.strip() for off in (-30, 0, 30))
         if not ok_otp:
@@ -274,7 +274,14 @@ class OtpConfirmIn(BaseModel):
     code: str = Field(max_length=8)
 
 
-@router.post("/otp/setup", summary="初始化 TOTP 二步验证")
+def _otp_available() -> None:
+    """OTP 能力默认关闭：实现与数据字段保留，关闭时不暴露接口（404）。"""
+    from app.core.config import settings
+    if not getattr(settings, "OTP_ENABLED", False):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "OTP 未启用")
+
+
+@router.post("/otp/setup", dependencies=[Depends(_otp_available)], summary="初始化 TOTP 二步验证")
 def otp_setup(request: Request, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     """生成 TOTP 密钥（未激活；confirm 后生效）。返回 otpauth:// 供验证器 App 扫码。"""
     import base64
@@ -289,7 +296,7 @@ def otp_setup(request: Request, user: User = Depends(get_current_user), db: Sess
     return {"secret": secret, "otpauth_uri": uri, "note": t("auth.otp_setup_note", lang_of(request))}
 
 
-@router.post("/otp/confirm", summary="确认并启用 TOTP")
+@router.post("/otp/confirm", dependencies=[Depends(_otp_available)], summary="确认并启用 TOTP")
 def otp_confirm(body: OtpConfirmIn, request: Request, user: User = Depends(get_current_user),
                 db: Session = Depends(get_db)):
     """校验当前验证器的 6 位动态码，校验通过后启用 TOTP 二步验证。"""
@@ -309,7 +316,7 @@ def otp_confirm(body: OtpConfirmIn, request: Request, user: User = Depends(get_c
     return {"ok": True, "otp_enabled": True}
 
 
-@router.post("/otp/disable", summary="验证并停用 TOTP")
+@router.post("/otp/disable", dependencies=[Depends(_otp_available)], summary="验证并停用 TOTP")
 def otp_disable(body: OtpConfirmIn, request: Request, user: User = Depends(get_current_user),
                 db: Session = Depends(get_db)):
     """校验当前验证器的 6 位动态码，校验通过后停用 TOTP 并清除密钥。"""

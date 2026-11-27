@@ -25,7 +25,8 @@ class CredentialOut(BaseModel):
 
 class UserCreate(BaseModel):
     username: str = Field(min_length=2, max_length=64)
-    password: str = Field(min_length=8, max_length=64)
+    # 留空则由服务端生成一次性初始密码，仅在创建响应里回显一次（与智能体建号口径一致）。
+    password: Optional[str] = Field(default=None, min_length=8, max_length=64)
     display_name: str = ""
     role: str = Field(pattern="^(admin|operator|viewer)$")
     # 创建即强制首登改密：无论密码自动生成还是管理员显式给定，默认都为 True；

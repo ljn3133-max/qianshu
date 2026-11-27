@@ -253,6 +253,9 @@ class Settings(BaseSettings):
     NOTIFY_TEST_MODE: bool = False
     # 登录图形验证码开关：True 时登录必填。
     CAPTCHA_ENABLED: bool = False
+    # TOTP 二步验证开关：保留完整实现与数据字段，但 False 时登录不校验 OTP，
+    # 前端不展示入口，/auth/otp/* 接口返回 404；需要时改环境变量即可启用。
+    OTP_ENABLED: bool = False
     NOTIFY_TEST_CHANNEL: str = "inapp"
     # 短信/语音模板（阿里云控制台申请后填入）
     SMS_SIGN_NAME: str = ""

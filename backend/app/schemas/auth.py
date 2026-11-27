@@ -9,7 +9,6 @@ class UserInfo(BaseModel):
     display_name: str
     role: str
     must_change_password: bool = False
-    otp_enabled: bool = False
     department_id: Optional[int] = None   # 所属部门
     permission_codes: list = []
 

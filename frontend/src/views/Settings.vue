@@ -18,6 +18,7 @@ import { fmtTime } from '@/utils/format'
 import { useAuthStore } from '@/stores/auth'
 import { t } from '@/i18n'
 import SettingsPolicy from '@/views/settings/SettingsPolicy.vue'
+import SettingsUsers from '@/views/settings/SettingsUsers.vue'
 
 const auth = useAuthStore()
 const route = useRoute()
@@ -659,8 +660,8 @@ function applySettingsDeepLink() {
     policy: ['policy', ''],
     notify: ['notify', 'channels'], channels: ['notify', 'channels'],
     models: ['models', 'ai'], ai: ['models', 'ai'], sdk: ['models', 'sdk'],
-    // 用户/组织架构不再提供独立页签；旧深链统一落到「访问令牌」，避免出现无落点页签
-    org: ['org', 'tokens'], users: ['org', 'tokens'], ownership: ['org', 'ownership'],
+    // 用户管理只保留「账号/密码/角色」，不做组织架构；旧深链 ?tab=users 直达该子页签
+    org: ['org', 'tokens'], users: ['org', 'users'], ownership: ['org', 'ownership'],
     tokens: ['org', 'tokens'], audit: ['org', 'audit'],
     platform: ['platform', 'sysparams'], sysparams: ['platform', 'sysparams'],
     hosts: ['platform', 'hosts'], holiday: ['platform', 'holiday'],
@@ -668,7 +669,7 @@ function applySettingsDeepLink() {
   }
   // 二级分区角色门槛必须与各 pane 的 v-if 一致，避免深链进入无权限或空白分区
   const SECTION_ROLE = {
-    channels: 'manage', ai: 'manage', hosts: 'admin', audit: 'admin',
+    users: 'admin', channels: 'manage', ai: 'manage', hosts: 'admin', audit: 'admin',
   }
   function sectionAllowed(sub) {
     const need = SECTION_ROLE[sub]
@@ -952,10 +953,13 @@ watch(() => route.fullPath, applySettingsDeepLink, { immediate: true })
         </el-tabs>
       </el-tab-pane>
 
-      <!-- 访问层不提供多用户/组织架构管理，仅保留访问令牌、归属规则和审计日志；
-           登录鉴权仍由后端安全底座负责 -->
+      <!-- 访问层：用户账号（仅 admin）+ 访问令牌 + 归属规则 + 审计日志；
+           不做多用户组织架构/部门，登录鉴权仍由后端安全底座负责 -->
       <el-tab-pane :label="t('settings.tab.access')" name="org">
         <el-tabs v-model="tabSub.org" class="sub-tabs">
+          <el-tab-pane v-if="isAdmin" :label="t('settings.tab.users')" name="users">
+            <SettingsUsers />
+          </el-tab-pane>
           <el-tab-pane :label="t('settings.tab.tokens')" name="tokens">
             <div class="toolbar">
               <el-button type="primary" @click="openTokenDialog">{{ t('settings.btn.new_token') }}</el-button>

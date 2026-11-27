@@ -130,6 +130,7 @@ def list_users(
         {
             "id": r.id, "username": r.username, "display_name": r.display_name,
             "role": r.role, "is_active": r.is_active,
+            "must_change_password": bool(r.must_change_password),
             "department_id": r.department_id,
             "last_login_at": r.last_login_at.isoformat() if r.last_login_at else None,
         }
@@ -144,8 +145,11 @@ def create_user(
     db: Session = Depends(get_db),
     user: User = Depends(require_roles("admin")),
 ):
-    from app.core.security import check_password_strength, hash_password
-    _weak = check_password_strength(body.password)
+    from app.core.security import check_password_strength, generate_password, hash_password
+
+    generated = not body.password
+    password = body.password or generate_password()   # 留空即服务端生成一次性初始密码
+    _weak = check_password_strength(password)
     if _weak:
         raise HTTPException(400, _weak)
 
@@ -153,7 +157,7 @@ def create_user(
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "用户名已存在")
     row = User(
         username=body.username,
-        password_hash=hash_password(body.password),
+        password_hash=hash_password(password),
         display_name=body.display_name or body.username,
         role=body.role,
         must_change_password=bool(body.must_change_password),   # 默认强制首登改密
@@ -162,11 +166,17 @@ def create_user(
     db.flush()
     audit.record(
         db, action="user.create", user_id=user.id, username=user.username,
-        resource_type="user", resource_id=row.id, detail={"new_username": body.username, "role": body.role},
+        resource_type="user", resource_id=row.id,
+        detail={"new_username": body.username, "role": body.role,
+                "password_source": "generated" if generated else "given"},
         client_ip=get_client_ip(request),
     )
     db.commit()
-    return {"id": row.id, "ok": True, "must_change_password": bool(body.must_change_password)}
+    out = {"id": row.id, "ok": True, "must_change_password": bool(body.must_change_password),
+           "password_source": "generated" if generated else "given"}
+    if generated:
+        out["initial_password"] = password   # 一次性回显，此后无处可取（库存哈希）
+    return out
 
 
 @router.put("/users/{user_id}")

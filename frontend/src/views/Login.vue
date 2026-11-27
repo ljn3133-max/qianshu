@@ -13,12 +13,11 @@ const router = useRouter()
 const route = useRoute()
 const auth = useAuthStore()
 
-const form = reactive({ username: '', password: '', captcha: '', otp: '', sliderTicket: '' })
+const form = reactive({ username: '', password: '', captcha: '', sliderTicket: '' })
 const captcha = ref({ enabled: false, id: '', svg: '' })
 const captchaMode = ref('slider')   // 人机验证形态：slider 滑块（默认）/ svg 文字（可切换）
 const sliderKey = ref(0)            // 登录失败后重挂载=换新挑战
-const needOtp = ref(false)
-const otpEnabledHint = ref(false)   // 登录失败提示需 OTP 时才显示输入框
+// OTP（TOTP 二步）能力保留在后端，当前 OTP_ENABLED=false，登录页不展示动态码输入。
 const recoveryHint = ref('')        // 找回兜底提示（后端判定：本机来源+连错 ≥3 次才下发文本）
 
 async function loadCaptcha() {
@@ -68,7 +67,6 @@ async function onLogin() {
     await auth.login(form.username, form.password, {
       captcha_id: captcha.value.id, captcha_code: form.captcha,
       slider_ticket: form.sliderTicket,
-      otp_code: form.otp,
     })
     // 首次登录（默认密码）强制先改密
     if (auth.user?.must_change_password) {
@@ -78,15 +76,10 @@ async function onLogin() {
       router.push('/')
     }
   } catch (e) {
-    // 明确提示失败原因（用户不存在/密码错误/验证码/动态码）
+    // 明确提示失败原因（用户不存在/密码错误/验证码）
     resetCaptcha()   // 验证票据一次性：失败后换新挑战
     const msg = e?.response?.data?.detail || e?.message || t('login.msg.failed')
-    if (String(msg).includes('动态验证码')) {
-      otpEnabledHint.value = true
-      ElMessage.warning(t('login.msg.need_otp'))
-    } else {
-      ElMessage.error(String(msg))
-    }
+    ElMessage.error(String(msg))
     // 找回兜底提示：文本由后端按来源/失败次数判定下发，外部来源恒为空
     try {
       const r = await http.get('/auth/recovery-hint', { params: { username: form.username } })
@@ -142,10 +135,6 @@ async function onLogin() {
           <el-button link type="primary" size="small" class="captcha-switch" @click="switchCaptchaMode">
             {{ t('login.captcha.switch_to_slider') }}
           </el-button>
-        </el-form-item>
-        <el-form-item v-if="otpEnabledHint || form.otp">
-          <el-input v-model="form.otp" :placeholder="t('login.form.otp')" maxlength="6"
-                    autocomplete="one-time-code" name="otp" />
         </el-form-item>
         <el-button type="primary" size="large" style="width: 100%" :loading="loading" @click="onLogin">
           {{ t('login.submit') }}
